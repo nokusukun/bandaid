@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-type Config struct {
+type CaddyConfig struct {
 	ID       string         `json:"@id,omitempty"`
 	Match    []DomainConfig `json:"match,omitempty"`
 	Handle   []ConfigHandle `json:"handle,omitempty"`
@@ -39,24 +39,24 @@ type DomainConfig struct {
 	Path []string `json:"path,omitempty"`
 }
 
-type CaddyConfig struct {
+type AutoCaddyConfig struct {
 	host      string
-	Config    *Config
+	Config    *CaddyConfig
 	CaddyAPI  string
 	RoutePath string
 
 	initial_should_enable_autohttps bool
 }
 
-func AutoCaddy(id string) *CaddyConfig {
-	return &CaddyConfig{
-		Config:    &Config{ID: fmt.Sprintf("bandaid-%v", id)},
+func AutoCaddy(id string) *AutoCaddyConfig {
+	return &AutoCaddyConfig{
+		Config:    &CaddyConfig{ID: fmt.Sprintf("bandaid-%v", id)},
 		CaddyAPI:  "http://localhost:2019",
 		RoutePath: "config/apps/http/servers/srv0/routes",
 	}
 }
 
-func (b *CaddyConfig) SetDomain(config DomainConfig) *CaddyConfig {
+func (b *AutoCaddyConfig) SetDomain(config DomainConfig) *AutoCaddyConfig {
 	if len(b.Config.Match) == 0 {
 		b.Config.Match = []DomainConfig{}
 	}
@@ -65,17 +65,17 @@ func (b *CaddyConfig) SetDomain(config DomainConfig) *CaddyConfig {
 	return b
 }
 
-func (b *CaddyConfig) SetHost(host string) *CaddyConfig {
+func (b *AutoCaddyConfig) SetHost(host string) *AutoCaddyConfig {
 	b.host = host
 	return b
 }
 
-func (b *CaddyConfig) Initial_SetAutoHTTPS(auto bool) *CaddyConfig {
+func (b *AutoCaddyConfig) Initial_SetAutoHTTPS(auto bool) *AutoCaddyConfig {
 	b.initial_should_enable_autohttps = auto
 	return b
 }
 
-func (b *CaddyConfig) AttemptInitializeCaddy() *CaddyConfig {
+func (b *AutoCaddyConfig) AttemptInitializeCaddy() *AutoCaddyConfig {
 	def := map[string]interface{}{
 		"apps": map[string]interface{}{
 			"http": map[string]interface{}{
@@ -108,7 +108,7 @@ func (b *CaddyConfig) AttemptInitializeCaddy() *CaddyConfig {
 	return b
 }
 
-func (b *CaddyConfig) ApplyAndRun(launch func(host string) error) error {
+func (b *AutoCaddyConfig) ApplyAndRun(launch func(host string) error) error {
 	host, err := b.Apply()
 	if err != nil {
 		return err
@@ -118,13 +118,14 @@ func (b *CaddyConfig) ApplyAndRun(launch func(host string) error) error {
 	return launch(host)
 }
 
-func (b *CaddyConfig) Apply() (string, error) {
+func (b *AutoCaddyConfig) Apply() (string, error) {
 	log.Println("[bandaid] Configuring caddy reverse proxy")
 
 	host := b.host
 	// If no host has been selected, then try to launch the application of a random unused port
 	if host == "" {
 		port, err := freeport.GetFreePort()
+		log.Printf("[bandaid] No host specified, using 'localhost:%v'\n", port)
 		if err != nil {
 			return "", err
 		}
@@ -146,14 +147,20 @@ func (b *CaddyConfig) Apply() (string, error) {
 		},
 	}
 
-	resp, _ := grequests.Delete(fmt.Sprintf("%v/id/%v", b.CaddyAPI, b.Config.ID), nil)
+	resp, err := grequests.Delete(fmt.Sprintf("%v/id/%v", b.CaddyAPI, b.Config.ID), nil)
+	if err != nil {
+		return "", err
+	}
 	if !resp.Ok && !strings.Contains(resp.String(), "unknown object ID") {
 		return "", errors.New(resp.String())
 	}
 
-	resp, _ = grequests.Post(fmt.Sprintf("%v/%v", b.CaddyAPI, b.RoutePath), &grequests.RequestOptions{
+	resp, err = grequests.Post(fmt.Sprintf("%v/%v", b.CaddyAPI, b.RoutePath), &grequests.RequestOptions{
 		JSON: b.Config,
 	})
+	if err != nil {
+		return "", err
+	}
 	if !resp.Ok {
 		return "", errors.New(resp.String())
 	}

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 )
 
 type DNSConfig struct {
@@ -66,6 +67,33 @@ func (c *CloudflareConfig) DevMode() *CloudflareConfig {
 	return c
 }
 
+func (c *CloudflareConfig) Uninstall() error {
+	b, err := ioutil.ReadFile(".cf-dns")
+	if err != nil {
+		return err
+	}
+	record := DNSRecord{}
+	if err = json.Unmarshal(b, &record); err != nil {
+		return err
+	}
+
+	err = c.RemoveConfiguration(record)
+	if err != nil {
+		return err
+	}
+
+	return os.Remove(".cf-dns")
+}
+
+func (c *CloudflareConfig) Reinstall() error {
+	log.Println("[cloudflare] attempting to clear installed configuration")
+	err := c.Uninstall()
+	if err != nil {
+		log.Println("[cloudflare]  -> failed (but that's probably normal)")
+	}
+	return c.Install()
+}
+
 func (c *CloudflareConfig) Install() error {
 	if c.devMode {
 		log.Println("[cloudflare] developer flag turned on, skipping...")
@@ -77,9 +105,22 @@ func (c *CloudflareConfig) Install() error {
 		return nil
 	}
 
-	zone, err := c.getZone()
+	record, err := c.SendConfiguration()
 	if err != nil {
 		return err
+	}
+
+	data, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(".cf-dns", data, os.ModePerm)
+}
+
+func (c *CloudflareConfig) SendConfiguration() (DNSRecord, error) {
+	zone, err := c.getZone()
+	if err != nil {
+		return DNSRecord{}, err
 	}
 	log.Println("[cloudflare] Zone found, installing to", zone.Name, zone.ID)
 
@@ -87,7 +128,7 @@ func (c *CloudflareConfig) Install() error {
 		log.Print("[cloudflare] DNS.Content is empty, trying to retrieve IP address...")
 		ip, err := GetIP()
 		if err != nil {
-			return err
+			return DNSRecord{}, err
 		}
 		log.Println("   ->", ip)
 		c.DNS.Content = ip
@@ -100,25 +141,38 @@ func (c *CloudflareConfig) Install() error {
 		},
 	})
 	if err != nil {
-		return err
+		return DNSRecord{}, err
 	}
 	if !resp.Ok {
-		return fmt.Errorf("failed: %v", resp.String())
+		return DNSRecord{}, fmt.Errorf("failed: %v", resp.String())
 	}
 	response, err := UnmarshalDNSRecordResponse(resp.Bytes())
 	if err != nil {
-		return err
+		return DNSRecord{}, err
 	}
 
 	if len(response.Errors) > 0 {
-		return fmt.Errorf("%v", response.Errors)
+		return DNSRecord{}, fmt.Errorf("%v", response.Errors)
 	}
+	return response.Result, nil
+}
 
-	data, err := json.Marshal(response.Result)
+func (c *CloudflareConfig) RemoveConfiguration(record DNSRecord) error {
+	req, err := grequests.Delete(fmt.Sprintf("%v/zones/%v/dns_records/%v", c.apiURL, record.ZoneID, record.ID),
+		&grequests.RequestOptions{
+			Headers: map[string]string{
+				"authorization": fmt.Sprintf("Bearer %v", c.Token),
+			},
+		},
+	)
+
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(".cf-dns", data, os.ModePerm)
+	if !strings.Contains(req.String(), record.ID) {
+		return fmt.Errorf("unsuccessful request: %v", req.String())
+	}
+	return nil
 }
 
 func (c *CloudflareConfig) getZone() (*Zone, error) {

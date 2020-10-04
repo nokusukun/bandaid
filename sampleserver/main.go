@@ -20,7 +20,7 @@ func main() {
 		SetZone("noku.pw").
 		SetDomain("example.noku.pw").
 		Proxied(true).
-		Install()
+		Reinstall()
 	if err != nil {
 		panic(err)
 	}
