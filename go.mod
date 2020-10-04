@@ -1,4 +1,4 @@
-module bandaid
+module github.com/nokusukun/bandaid
 
 go 1.14
 
