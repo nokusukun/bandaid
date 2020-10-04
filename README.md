@@ -86,7 +86,7 @@ if __name__ == '__main__':
             "proxied": true
         },
         "caddy": {
-            "domains": ["samplex.noku.pw", "test.example.com"]
+            "domains": ["sampley.noku.pw", "dev.internal"]
         },
         "health": {
             "check_url": "ping"
