@@ -1,8 +1,9 @@
 package main
 
 import (
-	"caddy_bandaid"
+	"bandaid"
 	"github.com/gin-gonic/gin"
+	"io/ioutil"
 )
 
 func main() {
@@ -11,10 +12,24 @@ func main() {
 		context.String(200, "Hello there from bandaid!")
 	})
 
-	err := caddy_bandaid.New("sample-application").
-		SetDomain(caddy_bandaid.DomainConfig{
-			Host: []string{"subdomain.example.com", "testx.example.com"},
+	token, err := ioutil.ReadFile("token.ini")
+	if err != nil {
+		panic(err)
+	}
+	err = bandaid.AutoCloudflare(string(token)).
+		SetZone("noku.pw").
+		SetDomain("example.noku.pw").
+		Proxied(true).
+		Install()
+	if err != nil {
+		panic(err)
+	}
+
+	err = bandaid.AutoCaddy("sample-application").
+		SetDomain(bandaid.DomainConfig{
+			Host: []string{"example.noku.pw", "test.example.com"},
 		}).
+		SetHost("localhost:3451").
 		AttemptInitializeCaddy().
 		ApplyAndRun(func(host string) error {
 			return router.Run(host)

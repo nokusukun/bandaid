@@ -1,6 +1,6 @@
-# Caddy Bandaid
+# Bandaid
 ---
-Automate caddy reverse proxying within go.
+Automate caddy and cloudflare reverse proxying within go.
 
 ### Install
 `go get github.com/nokusukun/caddy_bandaid`
@@ -10,7 +10,7 @@ Automate caddy reverse proxying within go.
 package main
 
 import (
-	"caddy_bandaid"
+	"bandaid"
 	"github.com/gin-gonic/gin"
 )
 
@@ -19,9 +19,17 @@ func main()  {
 	router.GET("/", func(context *gin.Context) {
 		context.String(200, "Hello there from bandaid!")
 	})
-
-	err := caddy_bandaid.New("sample-application").
-		SetDomain(caddy_bandaid.DomainConfig{
+	
+    // Cloudflare auto configuration
+    err := bandaid.AutoCloudflare("cloudflare-api-token").
+		SetZone("noku.pw").
+		SetDomain("example.noku.pw").
+		Proxied(true).
+		Install()
+    
+    // Caddy reverse proxy configuration
+	err := bandaid.AutoCaddy("sample-application").
+		SetDomain(bandaid.DomainConfig{
 			Host: []string{"subdomain.example.com"},
 		}).
 		AttemptInitializeCaddy().

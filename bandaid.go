@@ -1,4 +1,4 @@
-package caddy_bandaid
+package bandaid
 
 import (
 	"errors"
@@ -39,22 +39,24 @@ type DomainConfig struct {
 	Path []string `json:"path,omitempty"`
 }
 
-type Bandaid struct {
+type CaddyConfig struct {
 	host      string
 	Config    *Config
 	CaddyAPI  string
 	RoutePath string
+
+	initial_should_enable_autohttps bool
 }
 
-func New(id string) *Bandaid {
-	return &Bandaid{
+func AutoCaddy(id string) *CaddyConfig {
+	return &CaddyConfig{
 		Config:    &Config{ID: fmt.Sprintf("bandaid-%v", id)},
 		CaddyAPI:  "http://localhost:2019",
 		RoutePath: "config/apps/http/servers/srv0/routes",
 	}
 }
 
-func (b *Bandaid) SetDomain(config DomainConfig) *Bandaid {
+func (b *CaddyConfig) SetDomain(config DomainConfig) *CaddyConfig {
 	if len(b.Config.Match) == 0 {
 		b.Config.Match = []DomainConfig{}
 	}
@@ -63,19 +65,24 @@ func (b *Bandaid) SetDomain(config DomainConfig) *Bandaid {
 	return b
 }
 
-func (b *Bandaid) SetHost(host string) *Bandaid {
+func (b *CaddyConfig) SetHost(host string) *CaddyConfig {
 	b.host = host
 	return b
 }
 
-func (b *Bandaid) AttemptInitializeCaddy() *Bandaid {
+func (b *CaddyConfig) Initial_SetAutoHTTPS(auto bool) *CaddyConfig {
+	b.initial_should_enable_autohttps = auto
+	return b
+}
+
+func (b *CaddyConfig) AttemptInitializeCaddy() *CaddyConfig {
 	def := map[string]interface{}{
 		"apps": map[string]interface{}{
 			"http": map[string]interface{}{
 				"servers": map[string]interface{}{
 					"srv0": map[string]interface{}{
 						"automatic_https": map[string]interface{}{
-							"disable": true,
+							"disable": b.initial_should_enable_autohttps,
 						},
 						"listen": []interface{}{
 							":80",
@@ -101,7 +108,17 @@ func (b *Bandaid) AttemptInitializeCaddy() *Bandaid {
 	return b
 }
 
-func (b *Bandaid) ApplyAndRun(launch func(host string) error) error {
+func (b *CaddyConfig) ApplyAndRun(launch func(host string) error) error {
+	host, err := b.Apply()
+	if err != nil {
+		return err
+	}
+
+	log.Println("[bandaid] Launching")
+	return launch(host)
+}
+
+func (b *CaddyConfig) Apply() (string, error) {
 	log.Println("[bandaid] Configuring caddy reverse proxy")
 
 	host := b.host
@@ -109,7 +126,7 @@ func (b *Bandaid) ApplyAndRun(launch func(host string) error) error {
 	if host == "" {
 		port, err := freeport.GetFreePort()
 		if err != nil {
-			return err
+			return "", err
 		}
 		host = fmt.Sprintf("localhost:%v", port)
 	}
@@ -131,16 +148,14 @@ func (b *Bandaid) ApplyAndRun(launch func(host string) error) error {
 
 	resp, _ := grequests.Delete(fmt.Sprintf("%v/id/%v", b.CaddyAPI, b.Config.ID), nil)
 	if !resp.Ok && !strings.Contains(resp.String(), "unknown object ID") {
-		return errors.New(resp.String())
+		return "", errors.New(resp.String())
 	}
 
 	resp, _ = grequests.Post(fmt.Sprintf("%v/%v", b.CaddyAPI, b.RoutePath), &grequests.RequestOptions{
 		JSON: b.Config,
 	})
 	if !resp.Ok {
-		return errors.New(resp.String())
+		return "", errors.New(resp.String())
 	}
-
-	log.Println("[bandaid] Launching")
-	return launch(host)
+	return host, nil
 }

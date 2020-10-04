@@ -1,4 +1,4 @@
-module caddy_bandaid
+module bandaid
 
 go 1.14
 
