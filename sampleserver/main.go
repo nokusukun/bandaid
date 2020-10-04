@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bandaid"
 	"github.com/gin-gonic/gin"
+	"github.com/nokusukun/bandaid"
 	"io/ioutil"
 )
 

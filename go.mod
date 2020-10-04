@@ -6,4 +6,5 @@ require (
 	github.com/gin-gonic/gin v1.6.3
 	github.com/levigross/grequests v0.0.0-20190908174114-253788527a1a
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
+	gopkg.in/ini.v1 v1.61.0
 )
