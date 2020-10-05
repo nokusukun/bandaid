@@ -7,6 +7,7 @@ import (
 	"github.com/levigross/grequests"
 	"github.com/nokusukun/bandaid"
 	"github.com/phayes/freeport"
+	"gopkg.in/ini.v1"
 	"io/ioutil"
 	"log"
 	"os"
@@ -44,7 +45,7 @@ func IsError(code int, err interface{}, g *gin.Context) bool {
 }
 
 type API struct {
-	CFToken  string
+	Config   *ini.File
 	CaddyAPI string
 
 	reserved map[int]interface{}
@@ -105,59 +106,14 @@ func (api *API) GET_STATUS(ctx *gin.Context) {
 }
 
 func (api *API) POST_INSTALL_CONFIG(ctx *gin.Context) {
+	_ = api.Config.Reload()
 	config := &Configuration{}
 	configId := ctx.Param("configId")
 	if IsError(400, ctx.ShouldBindJSON(&config), ctx) {
 		return
 	}
 
-	if config.DNS.Zone != "" {
-		log.Println("Setting up cloudflare for", configId)
-
-		auto := bandaid.AutoCloudflare(api.CFToken).
-			SetZone(config.DNS.Zone).
-			SetDomain(config.DNS.Domain).
-			Proxied(config.DNS.Proxied)
-
-		// make sure we're not overwriting someone's currently running service
-		for cfid, configuration := range api.configs {
-			fmt.Println(configuration.DNS.Domain, config.DNS.Domain, cfid, configId)
-			if configuration.DNS.Domain == config.DNS.Domain && cfid != configId {
-				if !config.Force {
-					IsError(400, fmt.Errorf(
-						"DNS domain is being used by a running service(%v),"+
-							" change it or pass {'force': true} to the launch configuration. The service will attempt"+
-							" to remove the existing configuration", cfid),
-						ctx)
-					return
-				}
-				if IsError(500, api.RemoveCFConfig(cfid, auto), ctx) {
-					return
-				}
-				break
-			}
-		}
-
-		// Attempt to remove existing running configuration, it's only two API calls anyways
-		if IsError(400, api.RemoveCFConfig(configId, auto), ctx) {
-			return
-		}
-
-		// send CF configuration
-		record, err := auto.SendConfiguration()
-		if IsError(400, err, ctx) {
-			return
-		}
-
-		rb, err := json.Marshal(record)
-		if IsError(500, err, ctx) {
-			return
-		}
-		if IsError(500, ioutil.WriteFile(path.Join("configs", configId), rb, os.ModePerm), ctx) {
-			return
-		}
-	}
-
+	// Caddy
 	log.Println("Setting up caddy configuration for", configId)
 	host := config.Caddy.Host
 	if host == "" {
@@ -184,22 +140,85 @@ func (api *API) POST_INSTALL_CONFIG(ctx *gin.Context) {
 	if IsError(400, err, ctx) {
 		return
 	}
-
 	config.Caddy.Host = host
+
+	// Cloudflare/DNS
+	if config.DNS.Zone != "" {
+		log.Println("Setting up cloudflare for", configId)
+		token := api.Config.Section("cloudflare").Key(config.DNS.Zone).String()
+		if token == "" {
+			IsError(400, fmt.Errorf("there is no token saved for %v in the configuration file", config.DNS.Zone), ctx)
+			return
+		}
+		auto := bandaid.AutoCloudflare(token).
+			SetZone(config.DNS.Zone).
+			SetDomain(config.DNS.Domain).
+			Proxied(config.DNS.Proxied)
+
+		// make sure we're not overwriting someone's currently running service
+		for cfid, configuration := range api.configs {
+			fmt.Println(configuration.DNS.Domain, config.DNS.Domain, cfid, configId)
+			if configuration.DNS.Domain == config.DNS.Domain && cfid != configId {
+				if !config.Force {
+					IsError(400, fmt.Errorf(
+						"DNS domain is being used by a running service(%v),"+
+							" change it or pass {'force': true} to the launch configuration. The service will attempt"+
+							" to remove the existing configuration", cfid),
+						ctx)
+					return
+				}
+				_, err := api.RemoveCFConfig(cfid, auto, nil, true)
+				if IsError(500, err, ctx) {
+					return
+				}
+				break
+			}
+		}
+
+		// Attempt to remove existing running configuration, it's only two API calls anyways
+		skipped, err := api.RemoveCFConfig(configId, auto, config, config.Force)
+		if IsError(400, err, ctx) {
+			return
+		}
+
+		// send CF configuration
+		if !skipped {
+			record, err := auto.SendConfiguration()
+			if IsError(400, err, ctx) {
+				return
+			}
+
+			rb, err := json.Marshal(record)
+			if IsError(500, err, ctx) {
+				return
+			}
+			if IsError(500, ioutil.WriteFile(path.Join("configs", configId), rb, os.ModePerm), ctx) {
+				return
+			}
+		}
+	}
+
 	api.configs[configId] = *config
 	ctx.JSON(200, gin.H{
 		"host": host,
 	})
 }
 
-func (api *API) RemoveCFConfig(configId string, auto *bandaid.CloudflareConfig) error {
+func (api *API) RemoveCFConfig(configId string, auto *bandaid.CloudflareConfig, config *Configuration, reload bool) (skipped bool, err error) {
 	if b, err := ioutil.ReadFile(path.Join("configs", configId)); err == nil {
 		rec := bandaid.DNSRecord{}
 		err := json.Unmarshal(b, &rec)
 		if err != nil {
-			return err
+			return false, err
+		}
+		if !reload {
+			machine_ip, _ := bandaid.GetIP()
+			if config.DNS.Zone == rec.ZoneName && config.DNS.Domain == rec.Name && machine_ip == rec.Content {
+				log.Println("Skipping config removal, records are identical")
+				return true, nil
+			}
 		}
 		_ = auto.RemoveConfiguration(rec)
 	}
-	return nil
+	return false, nil
 }

@@ -14,7 +14,8 @@ func init() {
 		panic(err)
 	}
 	api = &API{
-		CFToken:  config.Section("cloudflare").Key("token").String(),
+		//CFToken:  config.Section("cloudflare").Key("token").String(),
+		Config:   config,
 		CaddyAPI: "http://localhost:2019",
 		reserved: map[int]interface{}{},
 		configs:  map[string]Configuration{},
