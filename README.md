@@ -95,3 +95,43 @@ if __name__ == '__main__':
     response = requests.post("http://localhost:2020/launch/my-sample-app", data = bandaid_config)
     app.run(response.json()['host'])
 ```
+
+
+### Automatic repository deployment using Bandaidfiles
+Bandaid has a feature where it allows automatic deployment from a git repository using Bandaidfiles
+
+Bandaidfiles are essentially TOML files that sets the configuration needed for complete autonomous management.
+
+`Bandaidfile`
+```toml
+[application]
+id = "my-sample-server"
+repo = "https://github.com/nokusukun/sample-express"
+health_endpoint = "/"
+event_url = "https://postb.in/1602269478542-1194403597619"
+run = [
+    ["yarn"], 
+    ["yarn", "run", "run"]
+]
+
+[dns]
+zone = "noku.pw"
+domain = "sampleapp.noku.pw"
+
+[caddy]
+domains = ["sampleapp.noku.pw"]
+```
+
+Commit this file in your repository named `Bandaid` and push. To deploy the application itself send a POST request to the following endpoint
+```
+POST "http://localhost:2020/manager/app" application/json {"repository":  "https://github.com/nokusukun/sample-express"} 
+```
+A unique ID will be returned to let you access logs and statistics within the application
+```
+/manager/.GET     ("/app/:serviceId/stdout", api.MANAGER_GET_STDOUT) // Retrieve the application's STDOUT
+/manager/.GET     ("/app/:serviceId/stderr", api.MANAGER_GET_STDERR) // Retrieve the application's STDERR
+/manager/.GET     ("/app/:serviceId/events", api.MANAGER_GET_EVENTS) // Retrieve the application's EVENTS
+/manager/.GET     ("/app/:serviceId/reload", api.MANAGER_GET_RELOAD) // Terminate current process, pull from the repository and launch again
+/manager/.GET     ("/app/:serviceId/config", api.MANAGER_GET_CONFIG) // Get Bandaidfile configuration
+/manager/.DELETE  ("/app/:serviceId", api.MANAGER_DELETE_APPLICATION) // Delete application
+```

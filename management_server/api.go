@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
@@ -50,6 +52,8 @@ type API struct {
 
 	reserved map[int]interface{}
 	configs  map[string]Configuration
+
+	deployed map[string]*Application
 }
 
 func (api *API) BuildAPI() *gin.Engine {
@@ -61,7 +65,141 @@ func (api *API) BuildAPI() *gin.Engine {
 		a.POST("/launch/:configId", api.POST_INSTALL_CONFIG)
 	}
 
+	manager := engine.Group("/manager")
+	{
+		manager.GET("/app/:serviceId/stdout", api.MANAGER_GET_STDOUT)
+		manager.GET("/app/:serviceId/stderr", api.MANAGER_GET_STDERR)
+		manager.GET("/app/:serviceId/events", api.MANAGER_GET_EVENTS)
+		manager.GET("/app/:serviceId/reload", api.MANAGER_GET_RELOAD)
+		manager.GET("/app/:serviceId/config", api.MANAGER_GET_CONFIG)
+		manager.DELETE("/app/:serviceId", api.MANAGER_DELETE_APPLICATION)
+		manager.POST("/app", api.MANAGER_POST_DEPLOY)
+
+	}
 	return engine
+}
+
+func (api *API) MANAGER_GET_RELOAD(ctx *gin.Context) {
+	service, exists := api.deployed[ctx.Param("serviceId")]
+	if !exists {
+		IsError(404, fmt.Errorf("service not found"), ctx)
+		return
+	}
+	if IsError(500, service.Reload(), ctx) {
+		return
+	}
+	ctx.String(200, "OK")
+}
+
+func (api *API) MANAGER_GET_STDOUT(ctx *gin.Context) {
+	service, exists := api.deployed[ctx.Param("serviceId")]
+	if !exists {
+		IsError(404, fmt.Errorf("service not found"), ctx)
+		return
+	}
+	ctx.String(200, service.log.String())
+}
+
+func (api *API) MANAGER_GET_CONFIG(ctx *gin.Context) {
+	service, exists := api.deployed[ctx.Param("serviceId")]
+	if !exists {
+		IsError(404, fmt.Errorf("service not found"), ctx)
+		return
+	}
+
+	if cfg, err := service.Config(); IsError(500, err, ctx) {
+		return
+	} else {
+		ctx.JSON(200, cfg)
+	}
+}
+
+func (api *API) MANAGER_GET_STDERR(ctx *gin.Context) {
+	service, exists := api.deployed[ctx.Param("serviceId")]
+	if !exists {
+		IsError(404, fmt.Errorf("service not found"), ctx)
+		return
+	}
+	ctx.String(200, service.err.String())
+}
+
+func (api *API) MANAGER_GET_EVENTS(ctx *gin.Context) {
+	service, exists := api.deployed[ctx.Param("serviceId")]
+	if !exists {
+		IsError(404, fmt.Errorf("service not found"), ctx)
+		return
+	}
+	ctx.JSON(200, service.Events)
+}
+
+func (api *API) MANAGER_DELETE_APPLICATION(ctx *gin.Context) {
+	serviceID := ctx.Param("serviceId")
+	service, exists := api.deployed[serviceID]
+	if !exists {
+		// Attempt to delete the folder if it exists
+		applicationPath := path.Join("app_data", serviceID)
+		if _, err := os.Stat(applicationPath); !os.IsNotExist(err) {
+			err = os.RemoveAll(applicationPath)
+			if err != nil {
+				IsError(500, fmt.Errorf("failed to delete existing path '%v' please manually delete it from the app_data folder", applicationPath), ctx)
+				return
+			}
+			ctx.String(200, "OK")
+		} else {
+			IsError(404, fmt.Errorf("service not found"), ctx)
+		}
+		return
+	}
+
+	if IsError(500, service.Kill(), ctx) {
+		return
+	}
+
+	applicationPath := path.Join("app_data", serviceID)
+	if _, err := os.Stat(applicationPath); !os.IsNotExist(err) {
+		err = os.RemoveAll(applicationPath)
+		if err != nil {
+			IsError(500, fmt.Errorf("failed to delete existing path '%v' please manually delete it from the app_data folder", applicationPath), ctx)
+			return
+		}
+	}
+	ctx.String(200, "OK")
+}
+
+func (api *API) MANAGER_POST_DEPLOY(ctx *gin.Context) {
+	app := &Application{}
+	if IsError(400, ctx.BindJSON(app), ctx) {
+		return
+	}
+	hash := md5.Sum([]byte(app.Repository))
+	app.ID = hex.EncodeToString(hash[:])
+
+	if _, exists := api.deployed[app.ID]; exists {
+		IsError(409, fmt.Errorf("resource already exists as '%v', please reload or delete the deployed application first", app.ID), ctx)
+		return
+	}
+
+	applicationPath := path.Join("app_data", app.ID)
+	if _, err := os.Stat(applicationPath); !os.IsNotExist(err) {
+		err = os.RemoveAll(applicationPath)
+		if err != nil {
+			IsError(500, fmt.Errorf("failed to delete existing path '%v' please manually delete it from the app_data folder", applicationPath), ctx)
+			return
+		}
+	}
+
+	if IsError(400, app.Clone(), ctx) {
+		return
+	}
+
+	if _, err := app.Config(); err != nil {
+		IsError(400, fmt.Errorf("Failed reading Bandaidfile, check file and recommit"), ctx)
+		return
+	}
+
+	api.deployed[app.ID] = app
+	go app.Launch()
+	ctx.String(200, app.ID)
 }
 
 func (api *API) GET_STATUS(ctx *gin.Context) {

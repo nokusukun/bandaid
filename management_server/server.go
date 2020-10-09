@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/levigross/grequests"
 	"gopkg.in/ini.v1"
+	"log"
+	"os/exec"
 )
 
 var api *API
@@ -19,6 +21,13 @@ func init() {
 		CaddyAPI: "http://localhost:2019",
 		reserved: map[int]interface{}{},
 		configs:  map[string]Configuration{},
+		deployed: map[string]*Application{},
+	}
+
+	err = exec.Command("git", "--version").Run()
+	if err != nil {
+		log.Println("running 'git --version' failed, make sure that git is installed in the machine")
+		panic(err)
 	}
 }
 
