@@ -25,19 +25,20 @@ type Application struct {
 	ID         string      `json:"id"`
 	Events     []*AppEvent `json:"events"`
 
-	directory string
-	cmd       *exec.Cmd
-	env       []string
-	log       bytes.Buffer
-	err       bytes.Buffer
-	event_url string
+	directory  string
+	cmd        *exec.Cmd
+	env        []string
+	log        bytes.Buffer
+	err        bytes.Buffer
+	event_urls []string
 }
 
 type BandaidFile struct {
 	Application struct {
 		ID       string     `toml:"id"`
+		Name     string     `toml:"name"`
 		Run      [][]string `toml:"run"`
-		EventURL string     `toml:"event_url"`
+		EventURL string     `toml:"event_urls"`
 		Health   string     `toml:"health_endpoint"`
 	} `toml:"application"`
 
@@ -77,11 +78,13 @@ func (app *Application) Log_Error(err error) {
 
 func (app *Application) add_event(event *AppEvent) {
 	// TODO: Do some magical logging stuff here
-	if app.event_url != "" {
-		var b bytes.Buffer
-		_ = json.NewEncoder(&b).Encode(event)
-		go (&http.Client{Timeout: time.Second * 5}).Post(app.event_url, "application/json", &b)
+	var b bytes.Buffer
+	if json.NewEncoder(&b).Encode(event) != nil {
+		for _, event_url := range app.event_urls {
+			go (&http.Client{Timeout: time.Second * 5}).Post(event_url, "application/json", &b)
+		}
 	}
+
 	app.Events = append(app.Events, event)
 }
 
@@ -96,6 +99,16 @@ func (app *Application) Clone() error {
 	return nil
 }
 
+func (app *Application) Destroy() error {
+	if _, err := os.Stat(app.directory); !os.IsNotExist(err) {
+		err = os.RemoveAll(app.directory)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (app *Application) Kill() error {
 	log.Println("Killing process", app.ID)
 	app.Log_Eventf("Killing process %v", app.ID)
@@ -104,16 +117,13 @@ func (app *Application) Kill() error {
 
 func (app *Application) Reload() error {
 	app.Log_Eventf("Reloading application %v", app.ID)
-	err := app.Kill()
-	if err != nil {
-		return err
-	}
+	_ = app.Kill()
 
 	app.Log_Eventf("Pulling from repository %v", app.Repository)
 	cmd := exec.Command("git", "pull")
 	cmd.Dir = app.directory
 	log.Println("Pulling new files for", app.directory)
-	err = cmd.Run()
+	err := cmd.Run()
 	if err != nil {
 		return err
 	}
@@ -143,7 +153,7 @@ func (app *Application) Launch() {
 		return
 	}
 
-	app.event_url = config.Application.EventURL
+	app.event_urls = append(app.event_urls, config.Application.EventURL)
 
 	log.Println("setting up autoconfig")
 	resp, err := req.Post("http://localhost:2020/api/launch/"+app.ID, req.BodyJSON(Configuration{

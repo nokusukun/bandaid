@@ -72,9 +72,10 @@ func (api *API) BuildAPI() *gin.Engine {
 		manager.GET("/app/:serviceId/events", api.MANAGER_GET_EVENTS)
 		manager.GET("/app/:serviceId/reload", api.MANAGER_GET_RELOAD)
 		manager.GET("/app/:serviceId/config", api.MANAGER_GET_CONFIG)
+		manager.POST("/app/:serviceId/eventurl", api.MANAGER_POST_EVENTURL)
 		manager.DELETE("/app/:serviceId", api.MANAGER_DELETE_APPLICATION)
 		manager.POST("/app", api.MANAGER_POST_DEPLOY)
-
+		manager.HEAD("/validate", api.MANAGER_GET_VALIDATE)
 	}
 	return engine
 }
@@ -151,8 +152,12 @@ func (api *API) MANAGER_DELETE_APPLICATION(ctx *gin.Context) {
 		return
 	}
 
-	if IsError(500, service.Kill(), ctx) {
-		return
+	//if IsError(500, , ctx) {
+	//	return
+	//}
+
+	if service.Kill() != nil {
+		log.Println("[error] failed to kill process")
 	}
 
 	applicationPath := path.Join("app_data", serviceID)
@@ -200,6 +205,46 @@ func (api *API) MANAGER_POST_DEPLOY(ctx *gin.Context) {
 	api.deployed[app.ID] = app
 	go app.Launch()
 	ctx.String(200, app.ID)
+}
+
+func (api *API) MANAGER_GET_VALIDATE(ctx *gin.Context) {
+	app := &Application{}
+	if IsError(400, ctx.BindJSON(app), ctx) {
+		return
+	}
+	hash := md5.Sum([]byte(app.Repository))
+	app.ID = fmt.Sprintf("_temp-%v", hex.EncodeToString(hash[:]))
+	defer app.Destroy()
+	if IsError(400, app.Clone(), ctx) {
+		return
+	}
+
+	config, err := app.Config()
+	if IsError(400, err, ctx) {
+		return
+	}
+
+	ctx.JSON(200, config)
+}
+
+func (api *API) MANAGER_POST_EVENTURL(ctx *gin.Context) {
+	type Body struct {
+		EventURL string `json:"event_url"`
+	}
+	body := &Body{}
+	if IsError(400, ctx.BindJSON(body), ctx) {
+		return
+	}
+
+	service := ctx.Param("configId")
+	app, exists := api.deployed[service]
+	if !exists {
+		IsError(404, fmt.Errorf("config '%v' not found", service), ctx)
+		return
+	}
+
+	app.event_urls = append(app.event_urls, body.EventURL)
+	ctx.String(200, "OK")
 }
 
 func (api *API) GET_STATUS(ctx *gin.Context) {
