@@ -117,6 +117,7 @@ run = [
 [dns]
 zone = "noku.pw"
 domain = "sampleapp.noku.pw"
+proxied = true     # Uses cloudflare's proxy/autohttps
 
 [caddy]
 domains = ["sampleapp.noku.pw"]

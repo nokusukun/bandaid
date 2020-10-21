@@ -152,12 +152,8 @@ func (api *API) MANAGER_DELETE_APPLICATION(ctx *gin.Context) {
 		return
 	}
 
-	//if IsError(500, , ctx) {
-	//	return
-	//}
-
-	if service.Kill() != nil {
-		log.Println("[error] failed to kill process")
+	if IsError(500, service.Kill(), ctx) {
+		return
 	}
 
 	applicationPath := path.Join("app_data", serviceID)

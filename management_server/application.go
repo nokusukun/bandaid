@@ -112,18 +112,24 @@ func (app *Application) Destroy() error {
 func (app *Application) Kill() error {
 	log.Println("Killing process", app.ID)
 	app.Log_Eventf("Killing process %v", app.ID)
-	return app.cmd.Process.Kill()
+	if !app.cmd.ProcessState.Exited() {
+		return app.cmd.Process.Kill()
+	}
+	return nil
 }
 
 func (app *Application) Reload() error {
 	app.Log_Eventf("Reloading application %v", app.ID)
-	_ = app.Kill()
+	err := app.Kill()
+	if err != nil {
+		return err
+	}
 
 	app.Log_Eventf("Pulling from repository %v", app.Repository)
 	cmd := exec.Command("git", "pull")
 	cmd.Dir = app.directory
 	log.Println("Pulling new files for", app.directory)
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		return err
 	}
