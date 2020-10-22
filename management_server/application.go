@@ -112,7 +112,8 @@ func (app *Application) Destroy() error {
 func (app *Application) Kill() error {
 	log.Println("Killing process", app.ID)
 	app.Log_Eventf("Killing process %v", app.ID)
-	if !app.cmd.ProcessState.Exited() {
+	// ProcessState contains information about an exited process available after a call to Wait or Run.
+	if app.cmd.ProcessState == nil {
 		return app.cmd.Process.Kill()
 	}
 	return nil

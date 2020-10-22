@@ -98,6 +98,9 @@ func main() {
 	go func() {
 		for _ = range c {
 			log.Println("Exiting...")
+			for _, application := range api.deployed {
+				_ = application.Kill()
+			}
 			os.Exit(1)
 		}
 	}()
