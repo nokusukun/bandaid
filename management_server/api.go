@@ -12,6 +12,7 @@ import (
 	"gopkg.in/ini.v1"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"path"
 	"time"
@@ -76,8 +77,37 @@ func (api *API) BuildAPI() *gin.Engine {
 		manager.DELETE("/app/:serviceId", api.MANAGER_DELETE_APPLICATION)
 		manager.POST("/app", api.MANAGER_POST_DEPLOY)
 		manager.HEAD("/validate", api.MANAGER_GET_VALIDATE)
+		manager.GET("/apps", api.MANAGER_GET_APPS)
+
 	}
 	return engine
+}
+
+func (api *API) MANAGER_GET_APPS(ctx *gin.Context) {
+	type AppStatus struct {
+		Application *Application `json:"application"`
+		Status      interface{}  `json:"status"`
+		Error       interface{}  `json:"error"`
+	}
+	statuses := []*AppStatus{}
+	for id, application := range api.deployed {
+		app := &AppStatus{Application: application}
+		statuses = append(statuses, app)
+		resp, err := (&http.Client{Timeout: time.Second * 10}).Get("http://localhost:2020/api/status/" + id)
+		if err != nil {
+			if resp != nil {
+				add_context, _ := ioutil.ReadAll(resp.Body)
+				app.Error = fmt.Errorf("Health check failed: %v", add_context)
+			} else {
+				app.Error = fmt.Errorf("Failed to call status: %v", err)
+			}
+			continue
+		}
+		if err := json.NewDecoder(resp.Body).Decode(app.Status); err != nil {
+			app.Error = fmt.Errorf("Failed to decode status body: %v", err)
+		}
+	}
+	ctx.JSON(200, statuses)
 }
 
 func (api *API) MANAGER_GET_RELOAD(ctx *gin.Context) {
@@ -208,6 +238,7 @@ func (api *API) MANAGER_GET_VALIDATE(ctx *gin.Context) {
 	if IsError(400, ctx.BindJSON(app), ctx) {
 		return
 	}
+
 	hash := md5.Sum([]byte(app.Repository))
 	app.ID = fmt.Sprintf("_temp-%v", hex.EncodeToString(hash[:]))
 	defer app.Destroy()
