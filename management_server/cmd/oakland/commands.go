@@ -204,22 +204,22 @@ func cmdApps(fl Flags) (int, error) {
 	}
 
 	fmt.Println(stemp.Compile(
-		"{id:w=32}  {repo:w=60} {status:w=3} {event}",
+		"{id:w=32}  {repo:w=60} {status:w=8} {event}",
 		gin.H{
 			"id":     "ID",
 			"repo":   "Repository",
-			"status": "Running",
+			"status": "Healthy",
 			"event":  "Last Event"}),
 	)
 	fmt.Println("--")
 
 	for _, app := range apps {
 		fmt.Println(stemp.Compile(
-			"{id:w=32}  {repo:w=60} {status:w=3} {event}",
+			"{id:w=32}  {repo:w=60} {status:w=8} {event}",
 			gin.H{
 				"id":     app.Application.ID,
 				"repo":   app.Application.Repository,
-				"status": app.Status.Error,
+				"status": !app.Status.Error,
 				"event":  app.Application.Events[len(app.Application.Events)-1].Message}),
 		)
 
