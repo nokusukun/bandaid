@@ -7,6 +7,7 @@ require (
 	github.com/gin-gonic/gin v1.6.3
 	github.com/imroc/req v0.3.0
 	github.com/levigross/grequests v0.0.0-20190908174114-253788527a1a
+	github.com/nokusukun/stemp v0.0.0-20190721151213-e6029a1e4f9a
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
 	github.com/rs/xid v1.2.1 // indirect
 	gopkg.in/ini.v1 v1.61.0

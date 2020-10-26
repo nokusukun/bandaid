@@ -60,6 +60,10 @@ type API struct {
 func (api *API) BuildAPI() *gin.Engine {
 	engine := gin.Default()
 
+	engine.GET("/", func(context *gin.Context) {
+		context.String(200, "bandaid-"+VERSION)
+	})
+
 	a := engine.Group("/api")
 	{
 		a.GET("/status/:configId", api.GET_STATUS)
@@ -75,8 +79,9 @@ func (api *API) BuildAPI() *gin.Engine {
 		manager.GET("/app/:serviceId/config", api.MANAGER_GET_CONFIG)
 		manager.POST("/app/:serviceId/eventurl", api.MANAGER_POST_EVENTURL)
 		manager.DELETE("/app/:serviceId", api.MANAGER_DELETE_APPLICATION)
+		manager.GET("/app/:serviceId", api.MANAGER_GET_APPSTATUS)
 		manager.POST("/app", api.MANAGER_POST_DEPLOY)
-		manager.HEAD("/validate", api.MANAGER_GET_VALIDATE)
+		manager.POST("/validate", api.MANAGER_GET_VALIDATE)
 		manager.GET("/apps", api.MANAGER_GET_APPS)
 
 	}
@@ -103,11 +108,39 @@ func (api *API) MANAGER_GET_APPS(ctx *gin.Context) {
 			}
 			continue
 		}
-		if err := json.NewDecoder(resp.Body).Decode(app.Status); err != nil {
+		if err := json.NewDecoder(resp.Body).Decode(&app.Status); err != nil {
 			app.Error = fmt.Errorf("Failed to decode status body: %v", err)
 		}
 	}
 	ctx.JSON(200, statuses)
+}
+
+func (api *API) MANAGER_GET_APPSTATUS(ctx *gin.Context) {
+	type AppStatus struct {
+		Application *Application `json:"application"`
+		Status      interface{}  `json:"status"`
+		Error       interface{}  `json:"error"`
+	}
+	application, exists := api.deployed[ctx.Param("serviceId")]
+	if !exists {
+		ctx.String(404, "App not found: "+ctx.Param("serviceId"))
+		return
+	}
+	app := &AppStatus{Application: application}
+	resp, err := (&http.Client{Timeout: time.Second * 10}).Get("http://localhost:2020/api/status/" + application.ID)
+	if err != nil {
+		if resp != nil {
+			add_context, _ := ioutil.ReadAll(resp.Body)
+			app.Error = fmt.Errorf("Health check failed: %v", add_context)
+		} else {
+			app.Error = fmt.Errorf("Failed to call status: %v", err)
+		}
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&app.Status); err != nil {
+		app.Error = fmt.Errorf("Failed to decode status body: %v", err)
+	}
+
+	ctx.JSON(200, app)
 }
 
 func (api *API) MANAGER_GET_RELOAD(ctx *gin.Context) {

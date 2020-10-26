@@ -207,8 +207,8 @@ func (app *Application) Launch() {
 
 	log.Println("Executing service at:", host.Host)
 	app.Log_Eventf("Executing service at '%v'", host.Host)
-	for _, commands := range config.Application.Run {
-		app.Log_Eventf("Launching CMD '%v'", commands)
+	for i, commands := range config.Application.Run {
+		app.Log_Eventf("Launching CMD (%v/%v) '%v'", i+1, len(config.Application.Run), commands)
 		cmd := exec.Command(commands[0], commands[1:]...)
 		cmd.Dir = app.directory
 		cmd.Env = app.env
