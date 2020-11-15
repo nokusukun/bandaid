@@ -83,22 +83,23 @@ func (api *API) BuildAPI() *gin.Engine {
 		manager.POST("/app", api.MANAGER_POST_DEPLOY)
 		manager.POST("/validate", api.MANAGER_GET_VALIDATE)
 		manager.GET("/apps", api.MANAGER_GET_APPS)
-
 	}
 	return engine
 }
 
+type AppStatus struct {
+	Application *Application `json:"application"`
+	Status      interface{}  `json:"status"`
+	Error       interface{}  `json:"error"`
+}
+
 func (api *API) MANAGER_GET_APPS(ctx *gin.Context) {
-	type AppStatus struct {
-		Application *Application `json:"application"`
-		Status      interface{}  `json:"status"`
-		Error       interface{}  `json:"error"`
-	}
+
 	statuses := []*AppStatus{}
 	for id, application := range api.deployed {
 		app := &AppStatus{Application: application}
 		statuses = append(statuses, app)
-		resp, err := (&http.Client{Timeout: time.Second * 10}).Get("http://localhost:2020/api/status/" + id)
+		resp, err := (&http.Client{Timeout: time.Second * 10}).Get("http://" + manager_address + "/api/status/" + id)
 		if err != nil {
 			if resp != nil {
 				add_context, _ := ioutil.ReadAll(resp.Body)
@@ -127,7 +128,7 @@ func (api *API) MANAGER_GET_APPSTATUS(ctx *gin.Context) {
 		return
 	}
 	app := &AppStatus{Application: application}
-	resp, err := (&http.Client{Timeout: time.Second * 10}).Get("http://localhost:2020/api/status/" + application.ID)
+	resp, err := (&http.Client{Timeout: time.Second * 10}).Get("http://" + manager_address + "/api/status/" + application.ID)
 	if err != nil {
 		if resp != nil {
 			add_context, _ := ioutil.ReadAll(resp.Body)
@@ -199,6 +200,7 @@ func (api *API) MANAGER_GET_EVENTS(ctx *gin.Context) {
 func (api *API) MANAGER_DELETE_APPLICATION(ctx *gin.Context) {
 	serviceID := ctx.Param("serviceId")
 	service, exists := api.deployed[serviceID]
+
 	if !exists {
 		// Attempt to delete the folder if it exists
 		applicationPath := path.Join("app_data", serviceID)
@@ -372,11 +374,11 @@ func (api *API) POST_INSTALL_CONFIG(ctx *gin.Context) {
 			}
 		}
 	}
-
-	host, err := bandaid.AutoCaddy(configId).
-		SetDomain(bandaid.DomainConfig{
-			Host: config.Caddy.Domains,
-		}).
+	c := bandaid.AutoCaddy(configId)
+	c.CaddyAPI = fmt.Sprintf("http://%v", caddy_address)
+	host, err := c.SetDomain(bandaid.DomainConfig{
+		Host: config.Caddy.Domains,
+	}).
 		SetHost(host).
 		AttemptInitializeCaddy().
 		Apply()

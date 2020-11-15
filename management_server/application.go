@@ -113,8 +113,12 @@ func (app *Application) Kill() error {
 	log.Println("Killing process", app.ID)
 	app.Log_Eventf("Killing process %v", app.ID)
 	// ProcessState contains information about an exited process available after a call to Wait or Run.
-	if app.cmd.ProcessState == nil {
-		return app.cmd.Process.Kill()
+	if app.cmd != nil {
+		if app.cmd.ProcessState == nil {
+			return app.cmd.Process.Kill()
+		}
+		// Just do it anyways for safe measure
+		_ = app.cmd.Process.Kill()
 	}
 	return nil
 }

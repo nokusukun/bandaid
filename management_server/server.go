@@ -22,9 +22,18 @@ import (
 )
 
 var api *API
+var (
+	manager_address string
+	slack_address   string
+	caddy_address   string
+)
 
 func init() {
 	config, err := ini.Load("config.ini")
+	manager_address = config.Section("locations").Key("manager").String()
+	slack_address = config.Section("locations").Key("slack_engine").String()
+	caddy_address = config.Section("locations").Key("caddy").String()
+
 	if err != nil {
 		panic(err)
 	}
@@ -46,51 +55,21 @@ func init() {
 
 func main() {
 	// Making sure that caddy is actually running
-	_, err := grequests.Get("http://localhost:2019/", nil)
+	_, err := grequests.Get(fmt.Sprintf("http://%v", caddy_address), nil)
 	if err != nil {
 		panic(fmt.Errorf("Initial request failed, make sure caddy-admin is running on localhost:2019 (%v)", err))
 	}
 
-	_api := api.BuildAPI()
 	go func() {
-		panic(_api.Run("localhost:2020"))
+		panic(api.BuildAPI().Run(manager_address))
+	}()
+	go func() {
+		panic(SlackEngine(slack_address, api.Config))
 	}()
 
 	time.Sleep(time.Second)
 
-	log.Println("[startup] Looking for deployed services...")
-	matches, err := filepath.Glob(path.Join("app_data", "**"))
-	for _, match := range matches {
-		// check if it's a valid hash by attempting to hex decode the folder name
-		id := filepath.Base(match)
-		if _, err := hex.DecodeString(id); err != nil {
-			continue
-		}
-		log.Println("[startup] Loading", match)
-		cmd := exec.Command("git", "remote", "get-url", "--all", "origin")
-		cmd.Dir = match
-		url, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Println("[startup] Failed to get origin url: ", err, string(url))
-			continue
-		}
-		origin := strings.TrimSpace(string(url))
-		log.Println("[startup] Deploying", origin)
-
-		body, _ := json.Marshal(gin.H{
-			"repository": origin,
-		})
-		response, err := (&http.Client{Timeout: time.Minute * 10}).Post("http://localhost:2020/manager/app", "application/json", bytes.NewBuffer(body))
-		if err != nil {
-			log.Println("[startup] Failed:", err)
-			continue
-		}
-		data, err := ioutil.ReadAll(response.Body)
-		if err != nil {
-			log.Println("[startup] Failed:", err)
-		}
-		log.Println("[startup] OK:", string(data))
-	}
+	LoadApplications()
 
 	log.Println("[startup] Initialization done, ctrl+c to exit")
 	c := make(chan os.Signal, 1)
@@ -105,4 +84,61 @@ func main() {
 		}
 	}()
 	select {}
+}
+
+func LoadApplications() {
+	log.Println("[startup] Looking for deployed services...")
+	matches, err := filepath.Glob(path.Join("app_data", "**"))
+	if err != nil {
+		panic(err)
+	}
+	for _, match := range matches {
+		// check if it's a valid hash by attempting to hex decode the folder name
+		id := filepath.Base(match)
+		// Check if it's a valid application folder by attempting to decode it as a hex string
+		if _, err := hex.DecodeString(id); err != nil {
+			continue
+		}
+
+		stat, err := os.Stat(path.Join(match, ".git"))
+
+		if os.IsNotExist(err) {
+			log.Println("[startup]", match, "does not contain a git repo. Deleting...")
+			err = os.Remove(match)
+			if err != nil {
+				log.Println("[startup] Failed to remove", match, ",", err)
+			}
+			continue
+		}
+
+		if !stat.IsDir() {
+			continue
+		}
+
+		log.Println("[startup] Loading", match)
+		cmd := exec.Command("git", "remote", "get-url", "--all", "origin")
+		cmd.Dir = match
+		url, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Println("[startup] Failed to get origin url: ", err, string(url))
+			continue
+		}
+		origin := strings.TrimSpace(string(url))
+		log.Println("[startup] Deploying", origin)
+
+		body, _ := json.Marshal(gin.H{
+			"repository": origin,
+		})
+		manager_address := api.Config.Section("locations").Key("manager").String()
+		response, err := (&http.Client{Timeout: time.Minute * 10}).Post(fmt.Sprintf("http://%v/manager/app", manager_address), "application/json", bytes.NewBuffer(body))
+		if err != nil {
+			log.Println("[startup] Failed:", err)
+			continue
+		}
+		data, err := ioutil.ReadAll(response.Body)
+		if err != nil {
+			log.Println("[startup] Failed:", err)
+		}
+		log.Println("[startup] OK:", string(data))
+	}
 }
