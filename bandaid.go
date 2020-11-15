@@ -151,7 +151,7 @@ func (b *AutoCaddyConfig) Apply() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !resp.Ok && !strings.Contains(resp.String(), "unknown object ApplicationID") {
+	if !resp.Ok && !strings.Contains(resp.String(), "unknown object ID") {
 		return "", errors.New(resp.String())
 	}
 
