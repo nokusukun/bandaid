@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/imroc/req"
 	"github.com/levigross/grequests"
+	"github.com/nokusukun/bandaid"
 	"gopkg.in/ini.v1"
 	"io/ioutil"
 	"log"
@@ -40,7 +41,27 @@ func SlackEngine(bind string, config *ini.File) error {
 		slack.POST("/interact", api.Interact)
 	}
 
-	return engine.Run(bind)
+	err := bandaid.AutoCloudflare(config.Section("cloudflare").Key("kingslandtesting.com").String()).
+		SetZone("kingslandtesting.com").
+		SetDomain("oakland-slack.kingslandtesting.com").
+		Proxied(true).
+		Reinstall()
+	if err != nil {
+		panic(err)
+	}
+
+	return bandaid.AutoCaddy("oakland-slack").
+		SetDomain(bandaid.DomainConfig{
+			Host: []string{"oakland-slack.kingslandtesting.com"},
+		}).
+		SetHost(bind).
+		AttemptInitializeCaddy().
+		ApplyAndRun(func(host string) error {
+			//return router.Run(host)
+			return engine.Run(host)
+		})
+
+	//return engine.Run(bind)
 }
 
 type SlackCommand struct {
