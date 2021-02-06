@@ -94,9 +94,18 @@ func (Oakland) DeployApplication(g *gin.Context) {
 		return
 	}
 
+	commands := strings.Split(command.Text, " ")
+	repo := commands[0]
+	config := ""
+	if len(commands) == 2 {
+		config = commands[1]
+	}
+
 	payload, err := json.Marshal(gin.H{
-		"repository": strings.TrimSpace(command.Text),
+		"repository": repo,
+		"config":     config,
 	})
+
 	if IsErrorSlack(err, "", command.Command, g) {
 		return
 	}
@@ -125,8 +134,16 @@ func (Oakland) ValidateApplication(g *gin.Context) {
 		return
 	}
 
+	commands := strings.Split(command.Text, " ")
+	repo := commands[0]
+	config := ""
+	if len(commands) == 2 {
+		config = commands[1]
+	}
+
 	payload, err := json.Marshal(gin.H{
-		"repository": strings.TrimSpace(command.Text),
+		"repository": repo,
+		"config":     config,
 	})
 	if IsErrorSlack(err, "", command.Command, g) {
 		return

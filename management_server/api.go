@@ -229,6 +229,7 @@ func (api *API) MANAGER_DELETE_APPLICATION(ctx *gin.Context) {
 			return
 		}
 	}
+	delete(api.deployed, serviceID)
 	ctx.String(200, "OK")
 }
 
@@ -237,7 +238,7 @@ func (api *API) MANAGER_POST_DEPLOY(ctx *gin.Context) {
 	if IsError(400, ctx.BindJSON(app), ctx) {
 		return
 	}
-	hash := md5.Sum([]byte(app.Repository))
+	hash := md5.Sum([]byte(app.Repository + app.SpecificConfig))
 	app.ID = hex.EncodeToString(hash[:])
 
 	if _, exists := api.deployed[app.ID]; exists {
@@ -246,6 +247,9 @@ func (api *API) MANAGER_POST_DEPLOY(ctx *gin.Context) {
 	}
 
 	applicationPath := path.Join("app_data", app.ID)
+	if app.SpecificConfig != "" {
+		applicationPath += "." + app.SpecificConfig
+	}
 	if _, err := os.Stat(applicationPath); !os.IsNotExist(err) {
 		err = os.RemoveAll(applicationPath)
 		if err != nil {
@@ -259,7 +263,7 @@ func (api *API) MANAGER_POST_DEPLOY(ctx *gin.Context) {
 	}
 
 	if _, err := app.Config(); err != nil {
-		IsError(400, fmt.Errorf("Failed reading Bandaidfile, check file and recommit"), ctx)
+		IsError(400, fmt.Errorf("Failed reading Bandaidfile, check file and recommit: %v", err), ctx)
 		return
 	}
 

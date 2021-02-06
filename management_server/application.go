@@ -16,14 +16,15 @@ import (
 
 type AppEvent struct {
 	Timestamp time.Time `json:"timestamp"`
-	Error     error     `json:"error,omitempty"`
+	Error     string    `json:"error,omitempty"`
 	Message   string    `json:"message,omitempty"`
 }
 
 type Application struct {
-	Repository string      `json:"repository"`
-	ID         string      `json:"id"`
-	Events     []*AppEvent `json:"events"`
+	Repository     string      `json:"repository"`
+	ID             string      `json:"id"`
+	Events         []*AppEvent `json:"events"`
+	SpecificConfig string      `json:"config"`
 
 	directory  string
 	cmd        *exec.Cmd
@@ -34,6 +35,7 @@ type Application struct {
 }
 
 type BandaidFile struct {
+	ConfigPath  string
 	Application struct {
 		ID       string     `toml:"id"`
 		Name     string     `toml:"name"`
@@ -72,7 +74,7 @@ func (app *Application) Log_Errorf(format string, msgs ...interface{}) {
 func (app *Application) Log_Error(err error) {
 	app.add_event(&AppEvent{
 		Timestamp: time.Now(),
-		Error:     err,
+		Error:     err.Error(),
 	})
 }
 
@@ -91,6 +93,9 @@ func (app *Application) add_event(event *AppEvent) {
 func (app *Application) Clone() error {
 	app.Log_Eventf("Cloning from repository %v", app.Repository)
 	app.directory = path.Join("app_data", app.ID)
+	if app.SpecificConfig != "" {
+		app.directory += "." + app.SpecificConfig
+	}
 	app.env = os.Environ()
 	b, err := exec.Command("git", "clone", app.Repository, app.directory).CombinedOutput()
 	if err != nil {
@@ -146,11 +151,17 @@ func (app *Application) Reload() error {
 func (app *Application) Config() (*BandaidFile, error) {
 	config := &BandaidFile{}
 
-	_, err := toml.DecodeFile(path.Join(app.directory, "Bandaid"), config)
+	config_path := "Bandaid"
+	if app.SpecificConfig != "" {
+		config_path = app.SpecificConfig
+	}
+
+	_, err := toml.DecodeFile(path.Join(app.directory, config_path), config)
 	if err != nil {
 		return nil, err
 	}
 
+	config.ConfigPath = config_path
 	return config, err
 }
 
@@ -197,13 +208,20 @@ func (app *Application) Launch() {
 	}
 
 	type Response struct {
-		Host string `json:"host"`
+		Host  string `json:"host"`
+		Error string `json:"error,omitempty"`
 	}
 	host := &Response{}
 	err = resp.ToJSON(host)
 	if err != nil {
 		log.Println("Error", err)
 		app.Log_Errorf("failed to read host from service, got: %v", resp.String())
+		return
+	}
+
+	if host.Error != "" {
+		log.Println("Error", host.Error)
+		app.Log_Errorf("failed to setup host from service: %v", host.Error)
 		return
 	}
 

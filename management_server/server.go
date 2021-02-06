@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
@@ -63,9 +62,9 @@ func main() {
 	go func() {
 		panic(api.BuildAPI().Run(manager_address))
 	}()
-	go func() {
-		panic(SlackEngine(slack_address, api.Config))
-	}()
+	//go func() {
+	//	panic(SlackEngine(slack_address, api.Config))
+	//}()
 
 	time.Sleep(time.Second)
 
@@ -94,24 +93,25 @@ func LoadApplications() {
 	}
 	for _, match := range matches {
 		// check if it's a valid hash by attempting to hex decode the folder name
-		id := filepath.Base(match)
+		//id := filepath.Base(match)
 		// Check if it's a valid application folder by attempting to decode it as a hex string
-		if _, err := hex.DecodeString(id); err != nil {
+		//if _, err := hex.DecodeString(id); err != nil {
+		//	continue
+		//}
+
+		stat_dir, err := os.Stat(match)
+
+		if err != nil || !stat_dir.IsDir() {
 			continue
 		}
 
-		stat, err := os.Stat(path.Join(match, ".git"))
-
+		_, err = os.Stat(path.Join(match, ".git"))
 		if os.IsNotExist(err) {
 			log.Println("[startup]", match, "does not contain a git repo. Deleting...")
 			err = os.Remove(match)
 			if err != nil {
 				log.Println("[startup] Failed to remove", match, ",", err)
 			}
-			continue
-		}
-
-		if !stat.IsDir() {
 			continue
 		}
 
@@ -125,9 +125,16 @@ func LoadApplications() {
 		}
 		origin := strings.TrimSpace(string(url))
 		log.Println("[startup] Deploying", origin)
+		specificConfig := path.Ext(match)
+		// removes the separator if it exists
+		if specificConfig != "" {
+			log.Printf("[startup] Using configuration specified: %v\n", specificConfig[1:])
+			specificConfig = specificConfig[1:]
+		}
 
 		body, _ := json.Marshal(gin.H{
 			"repository": origin,
+			"config":     specificConfig,
 		})
 		manager_address := api.Config.Section("locations").Key("manager").String()
 		response, err := (&http.Client{Timeout: time.Minute * 10}).Post(fmt.Sprintf("http://%v/manager/app", manager_address), "application/json", bytes.NewBuffer(body))

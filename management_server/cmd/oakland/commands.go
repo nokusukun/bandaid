@@ -83,25 +83,28 @@ func InitializeCommands() {
 	})
 
 	AddCommand(Command{
-		Name:        "validate",
-		Usage:       "validate [--repo <git repository url>]",
-		Description: "Validate the app's Bandaid file, does not deploy the application yet",
-		Function:    cmdValidate,
+		Name:  "validate",
+		Usage: "validate [--repo <git repository url> --config <config>]",
+		Description: "Validate the app's Bandaid file, does not deploy the application yet. Specify " +
+			"<config> to use a different Bandaid file in the repository.",
+		Function: cmdValidate,
 		Flags: func() *flag.FlagSet {
 			fs := flag.NewFlagSet("events", flag.ExitOnError)
 			fs.String("repo", "", "Clone URL")
+			fs.String("config", "", "Bandaid file to use (empty for default)")
 			return fs
 		},
 	})
 
 	AddCommand(Command{
 		Name:        "deploy",
-		Usage:       "deploy [--repo <git repository url>]",
-		Description: "Deploy an app",
+		Usage:       "deploy [--repo <git repository url> --config <config>]",
+		Description: "Deploy an app. Specify <config> to use a different Bandaid file in the repository.",
 		Function:    cmdDeploy,
 		Flags: func() *flag.FlagSet {
 			fs := flag.NewFlagSet("events", flag.ExitOnError)
 			fs.String("repo", "", "Clone URL")
+			fs.String("config", "", "Bandaid file to use (empty for default)")
 			return fs
 		},
 	})
@@ -149,6 +152,7 @@ func cmdValidate(fl Flags) (int, error) {
 	//resp, err := (&http.Client{Timeout: time.Second * 10}).Head("http://localhost:2020/manager/validate")
 	resp, err := req.Post("http://localhost:2020/manager/validate", req.BodyJSON(gin.H{
 		"repository": fl.String("repo"),
+		"config":     fl.String("config"),
 	}))
 	if err != nil {
 		return 1, err
@@ -169,6 +173,7 @@ func cmdDeploy(fl Flags) (int, error) {
 	//resp, err := (&http.Client{Timeout: time.Second * 10}).Head("http://localhost:2020/manager/validate")
 	resp, err := req.Post("http://localhost:2020/manager/app", req.BodyJSON(gin.H{
 		"repository": fl.String("repo"),
+		"config":     fl.String("config"),
 	}))
 	if err != nil {
 		return 1, err

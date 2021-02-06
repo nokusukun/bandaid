@@ -12,9 +12,10 @@ type AppStatusResponse struct {
 }
 
 type Application struct {
-	Repository string  `json:"repository"`
-	ID         string  `json:"id"`
-	Events     []Event `json:"events"`
+	Repository     string  `json:"repository"`
+	ID             string  `json:"id"`
+	Events         []Event `json:"events"`
+	SpecificConfig string  `json:"config"`
 }
 
 type Event struct {
