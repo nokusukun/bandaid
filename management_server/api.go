@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strings"
 	"time"
 )
 
@@ -248,7 +249,7 @@ func (api *API) MANAGER_POST_DEPLOY(ctx *gin.Context) {
 
 	applicationPath := path.Join("app_data", app.ID)
 	if app.SpecificConfig != "" {
-		applicationPath += "." + app.SpecificConfig
+		applicationPath += "." + strings.Replace(app.SpecificConfig, ".", "-", -1)
 	}
 	if _, err := os.Stat(applicationPath); !os.IsNotExist(err) {
 		err = os.RemoveAll(applicationPath)

@@ -129,7 +129,7 @@ func LoadApplications() {
 		// removes the separator if it exists
 		if specificConfig != "" {
 			log.Printf("[startup] Using configuration specified: %v\n", specificConfig[1:])
-			specificConfig = specificConfig[1:]
+			specificConfig = strings.Replace(specificConfig[1:], "-", ".", -1)
 		}
 
 		body, _ := json.Marshal(gin.H{
