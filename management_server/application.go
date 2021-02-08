@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strings"
 	"time"
 )
 
@@ -42,6 +43,7 @@ type BandaidFile struct {
 		Run      [][]string `toml:"run"`
 		EventURL string     `toml:"event_urls"`
 		Health   string     `toml:"health_endpoint"`
+		Envs     []string   `toml:"envs"`
 	} `toml:"application"`
 
 	DNS struct {
@@ -94,7 +96,7 @@ func (app *Application) Clone() error {
 	app.Log_Eventf("Cloning from repository %v", app.Repository)
 	app.directory = path.Join("app_data", app.ID)
 	if app.SpecificConfig != "" {
-		app.directory += "." + app.SpecificConfig
+		app.directory += "." + strings.Replace(app.SpecificConfig, ".", "-", -1)
 	}
 	app.env = os.Environ()
 	b, err := exec.Command("git", "clone", app.Repository, app.directory).CombinedOutput()
@@ -226,6 +228,7 @@ func (app *Application) Launch() {
 	}
 
 	app.env = append(app.env, fmt.Sprintf("APP_HOST=%v", host.Host))
+	app.env = append(app.env, config.Application.Envs...)
 
 	log.Println("Executing service at:", host.Host)
 	app.Log_Eventf("Executing service at '%v'", host.Host)
