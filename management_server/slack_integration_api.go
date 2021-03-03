@@ -61,7 +61,7 @@ func SlackEngine(bind string, config *ini.File) error {
 			return engine.Run(host)
 		})
 
-	//return engine.Run(bind)
+	return engine.Run(bind)
 }
 
 type SlackCommand struct {
