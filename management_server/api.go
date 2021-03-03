@@ -27,8 +27,9 @@ type Configuration struct {
 	} `json:"dns"`
 
 	Caddy struct {
-		Domains []string `json:"domains"`
-		Host    string   `json:"host"`
+		Domains   []string `json:"domains"`
+		Host      string   `json:"host"`
+		AutoHTTPS bool     `json:"auto_https"`
 	} `json:"caddy"`
 
 	Health struct {
@@ -84,6 +85,9 @@ func (api *API) BuildAPI() *gin.Engine {
 		manager.POST("/app", api.MANAGER_POST_DEPLOY)
 		manager.POST("/validate", api.MANAGER_GET_VALIDATE)
 		manager.GET("/apps", api.MANAGER_GET_APPS)
+
+		// Webhook Execution
+		manager.POST("/webhook/gitlab", api.MANAGER_POST_WEBHOOK_GITLAB)
 	}
 	return engine
 }
@@ -92,6 +96,43 @@ type AppStatus struct {
 	Application *Application `json:"application"`
 	Status      interface{}  `json:"status"`
 	Error       interface{}  `json:"error"`
+}
+
+func (api *API) MANAGER_POST_WEBHOOK_GITLAB(ctx *gin.Context) {
+	payload := GitlabHookPayload{}
+	err := ctx.BindJSON(&payload)
+	if err != nil {
+		log.Println("failed to unmarshal payload", err)
+		ctx.JSON(200, gin.H{"ok": true})
+		return
+	}
+
+	if !strings.Contains(payload.ObjectKind, "push|merge_request") {
+		ctx.JSON(200, gin.H{"ok": true})
+		return
+	}
+
+	// Look for the app
+	for _, app := range api.deployed {
+		app_urls := strings.Join(
+			[]string{payload.Repository.URL, payload.Repository.GitHTTPURL, payload.Repository.GitSSHURL},
+			"",
+		)
+
+		if !strings.ContainsAny(app.Repository, app_urls) {
+			continue
+		}
+
+		_, branch := path.Split(payload.Ref)
+		config, _ := app.Config()
+		if config.Repository.Branch == branch && config.Repository.ReloadOnPush {
+			err := app.Reload()
+			if err != nil {
+				log.Println("failed to reload application", err)
+			}
+		}
+	}
+	ctx.JSON(200, gin.H{"ok": true})
 }
 
 func (api *API) MANAGER_GET_APPS(ctx *gin.Context) {
@@ -385,6 +426,7 @@ func (api *API) POST_INSTALL_CONFIG(ctx *gin.Context) {
 		Host: config.Caddy.Domains,
 	}).
 		SetHost(host).
+		Initial_SetAutoHTTPS(config.Caddy.AutoHTTPS).
 		AttemptInitializeCaddy().
 		Apply()
 	if IsError(400, err, ctx) {

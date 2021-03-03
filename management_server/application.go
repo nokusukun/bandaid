@@ -26,6 +26,7 @@ type Application struct {
 	ID             string      `json:"id"`
 	Events         []*AppEvent `json:"events"`
 	SpecificConfig string      `json:"config"`
+	Branch         string      `json:"branch"`
 
 	directory  string
 	cmd        *exec.Cmd
@@ -45,6 +46,11 @@ type BandaidFile struct {
 		Health   string     `toml:"health_endpoint"`
 		Envs     []string   `toml:"envs"`
 	} `toml:"application"`
+
+	Repository struct {
+		Branch       string `toml:"branch"`
+		ReloadOnPush bool   `toml:"reload_on_push"`
+	} `toml:"repository"`
 
 	DNS struct {
 		Zone    string `toml:"zone"`
@@ -76,7 +82,7 @@ func (app *Application) Log_Errorf(format string, msgs ...interface{}) {
 func (app *Application) Log_Error(err error) {
 	app.add_event(&AppEvent{
 		Timestamp: time.Now(),
-		Error:     err.Error(),
+		Error:     fmt.Sprintf("%v", err.Error()),
 	})
 }
 
@@ -99,7 +105,14 @@ func (app *Application) Clone() error {
 		app.directory += "." + strings.Replace(app.SpecificConfig, ".", "-", -1)
 	}
 	app.env = os.Environ()
-	b, err := exec.Command("git", "clone", app.Repository, app.directory).CombinedOutput()
+
+	args := []string{"clone"}
+	if app.Branch != "" {
+		args = append(args, "--branch", app.Branch)
+	}
+	args = append(args, app.Repository, app.directory)
+
+	b, err := exec.Command("git", args...).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%v: %v", string(b), err)
 	}
@@ -191,8 +204,9 @@ func (app *Application) Launch() {
 			Proxied: config.DNS.Proxied,
 		},
 		Caddy: struct {
-			Domains []string `json:"domains"`
-			Host    string   `json:"host"`
+			Domains   []string `json:"domains"`
+			Host      string   `json:"host"`
+			AutoHTTPS bool     `json:"auto_https"`
 		}{
 			Domains: config.Caddy.Domains,
 			Host:    config.Caddy.Host,

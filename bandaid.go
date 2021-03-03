@@ -82,7 +82,7 @@ func (b *AutoCaddyConfig) AttemptInitializeCaddy() *AutoCaddyConfig {
 				"servers": map[string]interface{}{
 					"srv0": map[string]interface{}{
 						"automatic_https": map[string]interface{}{
-							"disable": b.initial_should_enable_autohttps,
+							"disable": !b.initial_should_enable_autohttps,
 						},
 						"listen": []interface{}{
 							":80",
