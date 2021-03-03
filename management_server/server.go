@@ -62,9 +62,9 @@ func main() {
 	go func() {
 		panic(api.BuildAPI().Run(manager_address))
 	}()
-	//go func() {
-	//	panic(SlackEngine(slack_address, api.Config))
-	//}()
+	go func() {
+		panic(SlackEngine(slack_address, api.Config))
+	}()
 
 	time.Sleep(time.Second)
 
