@@ -39,12 +39,13 @@ type Application struct {
 type BandaidFile struct {
 	ConfigPath  string
 	Application struct {
-		ID       string     `toml:"id"`
-		Name     string     `toml:"name"`
-		Run      [][]string `toml:"run"`
-		EventURL string     `toml:"event_urls"`
-		Health   string     `toml:"health_endpoint"`
-		Envs     []string   `toml:"envs"`
+		ID            string     `toml:"id"`
+		Name          string     `toml:"name"`
+		Run           [][]string `toml:"run"`
+		EventURL      string     `toml:"event_urls"`
+		Health        string     `toml:"health_endpoint"`
+		Envs          []string   `toml:"envs"`
+		BaseDirectory string     `toml:"base_dir"`
 	} `toml:"application"`
 
 	Repository struct {
@@ -239,6 +240,10 @@ func (app *Application) Launch() {
 		log.Println("Error", host.Error)
 		app.Log_Errorf("failed to setup host from service: %v", host.Error)
 		return
+	}
+
+	if config.Application.BaseDirectory != "" {
+		app.directory = path.Join(app.directory, config.Application.BaseDirectory)
 	}
 
 	app.env = append(app.env, fmt.Sprintf("APP_HOST=%v", host.Host))
