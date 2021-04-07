@@ -106,13 +106,15 @@ Bandaidfiles are essentially TOML files that sets the configuration needed for c
 ```toml
 [application]
 id = "my-sample-server"
-repo = "https://github.com/nokusukun/sample-express"
+name = "https://github.com/nokusukun/sample-express"
 health_endpoint = "/"
 event_url = "https://postb.in/1602269478542-1194403597619"
 run = [
     ["yarn"], 
     ["yarn", "run", "run"]
 ]
+envs = ["STATE=active", "APP_BIND_CONFIG=localhost:9023"]
+base_dir = "frontend/app"
 
 [dns]
 zone = "noku.pw"
