@@ -187,8 +187,17 @@ func (Oakland) GetApplicationStatus(g *gin.Context) {
 	blocks := []gin.H{}
 	for _, status := range statuses {
 		emoji := "✔️"
-		if status.Status.(map[string]interface{})["error"].(bool) {
-			emoji = "❌"
+		switch v := status.Status.(map[string]interface{})["error"].(type) {
+		case bool:
+			if v {
+				emoji = "❌"
+			}
+		case string:
+			if v != "" {
+				emoji = "❌"
+			}
+		default:
+			emoji = "❓"
 		}
 		blocks = append(blocks, gin.H{
 			"type": "section",
