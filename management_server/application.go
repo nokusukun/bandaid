@@ -242,10 +242,6 @@ func (app *Application) Launch() {
 		return
 	}
 
-	if config.Application.BaseDirectory != "" {
-		app.directory = path.Join(app.directory, config.Application.BaseDirectory)
-	}
-
 	app.env = append(app.env, fmt.Sprintf("APP_HOST=%v", host.Host))
 	app.env = append(app.env, config.Application.Envs...)
 
@@ -255,6 +251,11 @@ func (app *Application) Launch() {
 		app.Log_Eventf("Launching CMD (%v/%v) '%v'", i+1, len(config.Application.Run), commands)
 		cmd := exec.Command(commands[0], commands[1:]...)
 		cmd.Dir = app.directory
+
+		if config.Application.BaseDirectory != "" {
+			cmd.Dir = path.Join(app.directory, config.Application.BaseDirectory)
+		}
+
 		cmd.Env = app.env
 		app.cmd = cmd
 
